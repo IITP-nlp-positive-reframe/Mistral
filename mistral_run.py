@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import torch
 import random
-# from sentence_transformers import SentenceTransformer, util
 from transformers import DataCollatorForLanguageModeling
 import os
 from transformers import Trainer, pipeline, set_seed, AutoModelForSeq2SeqLM, DataCollatorForSeq2Seq, Seq2SeqTrainingArguments, Seq2SeqTrainer, TrainingArguments
@@ -22,13 +21,11 @@ from transformers import TextDataset
 
 # Dataset Load
 from datasets import load_dataset
-root = "/content/positive-frames/"
-train_path = root + "data/wholetrain_gpt.txt"
-# train_path = root + "data/wholetrain.csv"
-# train_dataset = load_dataset('csv', data_files=train_path)
-dev_path =  root+"data/wholedev.csv"
+root = "./content/positive-frames/"
+train_path = root + "./data/wholetrain_gpt.txt"
+dev_path =  root+"./data/wholedev.csv"
 dev_dataset = load_dataset('csv', data_files=dev_path)
-test_path =  root + "data/wholetest.csv"
+test_path =  root + "./data/wholetest.csv"
 test_dataset = load_dataset('csv', data_files=test_path)
 
 def tokenize(prompt):
@@ -109,46 +106,13 @@ def run_mistral_unconstrained(name="s"):
 
     model = get_peft_model(model, config)
 
-    # tokenizer = AutoTokenizer.from_pretrained(model_name)
-    # tokenizer.pad_token = tokenizer.eos_token
-    # tokenizer.bos_token = "<|startoftext|>"
 
     metric = load_metric("rouge")
     metric2 = load_metric("sacrebleu")
 
     from transformers import TextDataset
 
-    # def generate_tokenized_text(examples):
-    #   print(examples)
-    #   tok_full_prompt = tokenizer(examples, padding="max_length", max_length=1024, truncation=True)
-    #   return tok_full_prompt
-    # train_dataset = np.read_txt(train_path)
-    # train_dataset = train_dataset.map(generate_tokenized_text, batched=True)
-    # test_dataset = load_dataset("csv",dataset_files=test_path)
-
     train_dataset,test_dataset,data_collator = load_dataset(train_path,test_path,tokenizer)
-    # def process_test_dataset(examples):
-    #   inputs =  "<|startoftext|> " + examples['original_text']+ "\nreframed:"
-    #   model_inputs = tokenizer(inputs, padding="max_length",truncation=True, max_length = 1024)
-    #   with tokenizer.as_target_tokenizer():
-    #     labels = tokenizer(examples["reframed_text"], padding = "max_length",max_length = 1024, truncation=True) #, max_length=max_target_length, truncation=True)
-    #   model_inputs["labels"] = labels["input_ids"]
-    #   return model_inputs
-
-
-
-    # def preprocess_function(examples):
-    #     inputs = examples["original_text"]
-    #     model_inputs = tokenizer(inputs, padding = "max_length", truncation=True) # max_length=max_input_length, truncation=True)
-    #     # Setup the tokenizer for targets
-    #     with tokenizer.as_target_tokenizer():
-    #         labels = tokenizer(examples["reframed_text"], padding = "max_length", truncation=True) #, max_length=max_target_length, truncation=True)
-    #     model_inputs["labels"] = labels["input_ids"]
-    #     return model_inputs
-    # tokenized_train_datasets = train_dataset.map(preprocess_function, batched=True)
-    # # tokenized_dev_datasets = dev_dataset.map(preprocess_function, batched=True)
-    # tokenized_test_datasets = test_dataset.map(preprocess_function, batched=True)
-    # data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 
     batch_size = 3
     optim = "paged_adamw_32bit"
@@ -167,33 +131,18 @@ def run_mistral_unconstrained(name="s"):
         gradient_accumulation_steps=gradient_accumulation_steps,
         optim=optim,
         learning_rate=learning_rate,
-        # per_device_train_batch_size=batch_size,
-        # per_device_eval_batch_size=batch_size,
-        evaluation_strategy="epoch",    # no for no testing
+        evaluation_strategy="epoch",
         do_train=True,
         do_eval=True,
         logging_steps=1024,
         save_steps=2048,
-        # warmup_steps=1024,
         max_grad_norm=max_grad_norm,
         warmup_ratio=warmup_ratio,
-        # group_by_length=True,
         lr_scheduler_type=lr_scheduler_type,
-        #max_steps=1500, # delete for full training
-        num_train_epochs = 5, #TRAIN_EPOCHS
+        num_train_epochs = 5,
         overwrite_output_dir=True,
         save_total_limit=5,
         fp16=True,
-        # bf16=True
-        ###### below is original for peft training
-      # auto_find_batch_size=True,
-      # num_train_epochs=4,
-      # learning_rate=2e-4,
-      # bf16=True,
-      # save_total_limit=4,
-      # logging_steps=10,
-      # output_dir=OUTPUT_DIR,
-      # save_strategy='epoch',
     )
 
 
@@ -224,34 +173,19 @@ def run_mistral_unconstrained(name="s"):
 
         return {k: round(v, 4) for k, v in result.items()}
 
-    # from trl import SFTTrainer
-    # # Why not working?
-    # trainer = SFTTrainer(
-    #     model=model,
-    #     train_dataset=train_dataset,
-    #     # test_dataset = test_dataset,
-    #     peft_config=config,
-    #     data_collator=data_collator,
-    #     # dataset_text_field="text",
-    #     # max_seq_length=max_seq_length,
-    #     tokenizer=tokenizer,
-    #     args=args,
-    # )
     trainer = transformers.Trainer(
         model=model,
         args=args,
         data_collator=data_collator,
-        # train_dataset=tokenized_train_datasets["train"],
-        # eval_dataset=tokenized_test_datasets["train"],
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
-        # compute_metrics=compute_metrics
 
     )
     model.config.use_cache = False
     trainer.train()
 
     trainer.evaluate()
+    
     # save model
     trainer.save_model(output_dir+"/output/reframer")
 
@@ -264,12 +198,7 @@ def run_mistral_unconstrained(name="s"):
     tokenizer.bos_token = "<|startoftext|>"
 
     reframer = pipeline('text-generation', model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id,  pad_token_id=tokenizer.eos_token_id)
-    # #prediction
-    # model = AutoPeftModelForCausalLM.from_pretrained(output_dir+"/output/reframer", load_in_4bit=True)
-    # model = prepare_model_for_kbit_training(model)
-
-    # tokenizer = AutoTokenizer.from_pretrained(output_dir+"/output/reframer")
-    # reframer = pipeline('text-generation', model=model, tokenizer=tokenizer,eos_token_id=tokenizer.eos_token_id)
+    
     import csv
     with open (test_path, newline="") as data:
       annotations = csv.DictReader(data, delimiter=',', quotechar='"')
@@ -282,10 +211,6 @@ def run_mistral_unconstrained(name="s"):
           reframed_phrases.append(gen_text)
           answer_phrases.append(annotations_list[i]['reframed_text'])
 
-    # test = pd.read_csv(test_path)
-    # texts = test['original_text'].to_list()
-    # reframed_phrases = [reframer(phrase)[0]['generated_text'] for phrase in texts]
-
     with open(os.path.join(root, f_name), 'w') as f:
         for item in reframed_phrases:
             f.write("%s\n" % item)
@@ -296,109 +221,5 @@ def run_mistral_unconstrained(name="s"):
 
 if __name__=='__main__':
     ##### Train #####
-    # print("Train Mistral start!")
-    # run_mistral_unconstrained()
-
-    ##### Falcon Inference #####
-    '''
-    print("Inference Falcon start!")
-    # # is it okay to use this?
-    
-    # tokenizer = AutoTokenizer.from_pretrained('Rocketknight1/falcon-rw-1b')
-    model = AutoPeftModelForCausalLM.from_pretrained("/content/positive-frames/falcon-rw-1b/output/reframer",
-                                                     load_in_4bit=True)
-    config = PeftConfig.from_pretrained("/content/positive-frames/falcon-rw-1b/output/reframer")
-    model = prepare_model_for_kbit_training(model)
-    tokenizer = AutoTokenizer.from_pretrained(
-        config.base_model_name_or_path)
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.bos_token = "<|startoftext|>"
-
-    reframer = pipeline('text-generation', model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id,
-                        pad_token_id=tokenizer.eos_token_id)
-    '''
-
-    ##### Mistral Inference #####
-    print("Inference Mistral start!")
-
-    # model = AutoPeftModelForCausalLM.from_pretrained("/content/positive-frames/falcon-rw-1b/output/reframer",
-                                                     load_in_4bit=True)
-    config = PeftConfig.from_pretrained("/content/positive-frames/mistral-rw-7b/output/reframer")
-    model = prepare_model_for_kbit_training(model)
-    tokenizer = AutoTokenizer.from_pretrained(
-        config.base_model_name_or_path)
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.bos_token = "<|startoftext|>"
-
-    reframer = pipeline('text-generation', model=model, tokenizer=tokenizer, eos_token_id=tokenizer.eos_token_id,
-                        pad_token_id=tokenizer.eos_token_id)
-
-    '''
-    import torch
-    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
-
-    base_model_id = "mistralai/Mistral-7B-v0.1"
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_compute_dtype=torch.bfloat16
-    )
-
-    base_model = AutoModelForCausalLM.from_pretrained(
-        base_model_id,  # Mistral, same as before
-        quantization_config=bnb_config,  # Same quantization config as before
-        device_map="auto",
-        trust_remote_code=True,
-        use_auth_token=True
-    )
-    
-    eval_tokenizer = AutoTokenizer.from_pretrained(
-        base_model_id,
-        add_bos_token=True,
-        trust_remote_code=True,
-    )
-
-    eval_prompt = """Given a target sentence construct the underlying meaning representation of the input sentence as a single function with attributes and attribute values.
-    This function should describe the target string accurately and the function must be one of the following ['inform', 'request', 'give_opinion', 'confirm', 'verify_attribute', 'suggest', 'request_explanation', 'recommend', 'request_attribute'].
-    The attributes must be one of the following: ['name', 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating', 'genres', 'player_perspective', 'has_multiplayer', 'platforms', 'available_on_steam', 'has_linux_release', 'has_mac_release', 'specifier']
-
-    ### Target sentence:
-    Earlier, you stated that you didn't have strong feelings about PlayStation's Little Big Adventure. Is your opinion true for all games which don't have multiplayer?
-
-    ### Meaning representation:
-    """
-
-    model_input = tokenizer(eval_prompt, return_tensors="pt").to("cuda")
-
-    ft_model.eval()
-    with torch.no_grad():
-        print(eval_tokenizer.decode(ft_model.generate(**model_input, max_new_tokens=100)[0], skip_special_tokens=True))
-    '''
-    import csv
-
-    with open(test_path, newline="") as data:
-        annotations = csv.DictReader(data, delimiter=',', quotechar='"')
-        print(annotations)
-        # for item in annotations:
-        #   print(item)
-        annotations_list = list(annotations)
-        reframed_phrases = []
-        answer_phrases = []
-        for i in range(len(annotations_list)):
-            prefix = "<|startoftext|> " + annotations_list[i]['original_text'] + "\nreframed:"
-            gen_text = reframer(prefix, max_length=100)[0]['generated_text']
-            reframed_phrases.append(gen_text)
-            answer_phrases.append(annotations_list[i]['reframed_text'])
-
-    # test = pd.read_csv(test_path)
-    # texts = test['original_text'].to_list()
-    # reframed_phrases = [reframer(phrase)[0]['generated_text'] for phrase in texts]
-
-    with open(os.path.join(root, "output_temp.txt"), 'w') as f:
-        for item in reframed_phrases:
-            f.write("%s\n" % item)
-
-    with open(os.path.join(root, "total_reframe.txt"), 'w') as f:
-        for item in answer_phrases:
-            f.write("%s\n" % item)
+    print("Train Mistral start!")
+    run_mistral_unconstrained()
