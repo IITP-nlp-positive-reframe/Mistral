@@ -11,6 +11,8 @@ from config import config
 from transformers import AutoTokenizer
 import nltk
 nltk.download('punkt')
+import pandas as pd
+from textblob import TextBlob
 
 # mistral
 from transformers import AutoTokenizer
@@ -111,6 +113,31 @@ sacrebleu = evaluate.load("sacrebleu")
 sacrebleu_scores = sacrebleu.compute(predictions=preds, references=gts)
 print("Mistral7B SacreBleu: ", sacrebleu_scores)
 f3.write("Mistral7B SacreBleu: "+ str(sacrebleu_scores))
+
+###### bertscore #####
+bertscore = evaluate.load("bertscore")
+bertscore_scores = bertscore.compute(predictions=preds, references=gts, lang='en')['f1']
+print("Mistral7B bertscore: ", bertscore_scores)
+f3.write("Mistral7B bertscore: "+ str(bertscore_scores))
+
+###### textblob #####
+data = pd.read_csv('./data/wholetest.csv')
+inputs = list(data['original_text'].values)
+
+pred_sentiment_scores = []
+input_sentiment_scores = []
+assert len(preds) == len(gts)
+for i in range(len(preds)):
+    blob = TextBlob(preds[i])
+    pred_sentiment_scores.append(blob.sentences[0].sentiment.polarity)
+    blob = TextBlob(inputs[i])
+    input_sentiment_scores.append(blob.sentences[0].sentiment.polarity)
+pred_sent_scores = np.array(pred_sentiment_scores)
+input_sent_scores = np.array(input_sentiment_scores)
+deltas = pred_sent_scores - input_sent_scores
+avg_delta = deltas.mean()
+print("Mistral7B textblob delta score: ", avg_delta)
+f3.write("Mistral7B textblob delta score: "+ str(avg_delta))
 
 f1.close()
 f2.close()
